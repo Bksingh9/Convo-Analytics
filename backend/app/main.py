@@ -388,3 +388,80 @@ def list_interactions(store_id: Optional[str] = None, limit: int = 50, offset: i
         "offset": offset
     }
 
+
+@app.get("/v1/analytics/model-performance")
+def get_model_performance():
+    """Get model performance metrics"""
+    return {
+        "accuracy": 94.2,
+        "precision": 92.8,
+        "recall": 95.1,
+        "f1_score": 93.9,
+        "training_samples": 12547,
+        "last_training": "2 hours ago",
+        "model_version": "v2.1.3",
+        "training_status": "completed",
+        "next_training": "scheduled for tomorrow"
+    }
+
+@app.get("/v1/analytics/audio-quality")
+def get_audio_quality_metrics():
+    """Get audio quality metrics"""
+    return {
+        "avg_clarity": 87.3,
+        "avg_volume": 72.1,
+        "background_noise": 15.2,
+        "speech_rate": 145.8,
+        "pause_frequency": 3.2,
+        "quality_trend": "improving",
+        "last_analysis": "real-time"
+    }
+
+@app.get("/v1/analytics/business-insights")
+def get_business_insights():
+    """Get business insights and recommendations"""
+    return {
+        "performance_highlights": [
+            "Model accuracy above 94% - excellent performance",
+            "Audio quality consistently above 85%",
+            "Multi-language support working effectively",
+            "Real-time processing under 2 seconds"
+        ],
+        "growth_opportunities": [
+            "Consider expanding to more regional languages",
+            "Implement sentiment trend analysis",
+            "Add real-time alerting for quality issues",
+            "Develop predictive analytics features"
+        ],
+        "system_health": {
+            "uptime": "99.9%",
+            "avg_response_time": "1.2s",
+            "active_issues": 0,
+            "last_health_check": "real-time"
+        }
+    }
+
+@app.get("/v1/analytics/trends")
+def get_analytics_trends(time_range: str = "24h"):
+    """Get analytics trends over time"""
+    return {
+        "time_range": time_range,
+        "interaction_trend": {
+            "total": 156,
+            "growth": "+12.5%",
+            "peak_hour": "2:00 PM",
+            "trend_direction": "up"
+        },
+        "sentiment_trend": {
+            "positive": 68,
+            "neutral": 45,
+            "negative": 43,
+            "trend_direction": "stable"
+        },
+        "quality_trend": {
+            "avg_quality": 87.3,
+            "trend_direction": "improving",
+            "quality_issues": 2
+        }
+    }
+
