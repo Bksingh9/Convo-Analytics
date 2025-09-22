@@ -345,3 +345,46 @@ def metrics():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+@app.get("/v1/interactions")
+def list_interactions(store_id: Optional[str] = None, limit: int = 50, offset: int = 0):
+    """List all interactions with optional filtering"""
+    interactions = list(DB.values())
+    
+    # Filter by store_id if provided
+    if store_id:
+        interactions = [it for it in interactions if it.store_id == store_id]
+    
+    # Sort by started_at descending (newest first)
+    interactions.sort(key=lambda x: x.started_at, reverse=True)
+    
+    # Apply pagination
+    total = len(interactions)
+    interactions = interactions[offset:offset + limit]
+    
+    # Convert to response format
+    result = []
+    for it in interactions:
+        result.append({
+            "id": it.id,
+            "store_id": it.store_id,
+            "user_id": it.user_id,
+            "started_at": it.started_at.isoformat() if it.started_at else None,
+            "ended_at": it.ended_at.isoformat() if it.ended_at else None,
+            "transcript": it.transcript,
+            "summary": it.summary,
+            "keywords": it.keywords,
+            "metrics": it.metrics,
+            "detected_language": it.detected_language,
+            "conversation_quality": it.conversation_quality,
+            "staff_performance_score": it.staff_performance_score,
+            "customer_satisfaction_score": it.customer_satisfaction_score
+        })
+    
+    return {
+        "interactions": result,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
