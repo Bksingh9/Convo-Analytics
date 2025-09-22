@@ -1,0 +1,31 @@
+# Core FastAPI dependencies
+fastapi>=0.115
+uvicorn[standard]>=0.34
+python-multipart
+pydantic>=2.6
+PyYAML>=6.0
+
+# ML and Audio Processing
+faster-whisper>=1.0
+webrtcvad>=2.0.10
+transformers>=4.42
+sentence-transformers>=2.7
+keybert>=0.8.4
+spacy>=3.7
+phonenumbers>=8.13
+soundfile>=0.12
+librosa>=0.10
+pydub>=0.25
+numpy>=1.24.0
+
+# Voice Analysis and Language Detection
+scipy>=1.10.0
+scikit-learn>=1.3.0
+
+# Optional: Database and Storage
+redis>=5.0
+celery>=5.3
+minio>=7.2
+
+# Optional: SQL ORM
+SQLAlchemy>=2.0

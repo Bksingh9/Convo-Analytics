@@ -1,0 +1,35 @@
+stt:
+  engine: faster_whisper
+  size: base           # tiny|base|small
+  device: auto         # auto|cpu|cuda
+  lang_hint: auto      # auto|en|hi
+
+vad:
+  threshold: 0.5
+  min_utterance_ms: 800
+  max_silence_ms: 1200
+
+thresholds:
+  objection: 0.6
+  handling: 0.6
+  redflag: 0.6
+
+weights_redflag:
+  disrespect: 3
+  inventory: 2
+  process: 2
+  knowledge: 1
+  team: 1
+
+privacy:
+  pii: moderate
+  retain_audio_days: 30
+  retain_highlights_days: 180
+  retain_transcripts_days: 365
+
+languages: ["en-IN", "hi-IN"]
+
+interesting_rules:
+  - "red_flag_score >= p75"
+  - "session_sentiment <= -0.2 for >= 15s"
+  - "objection(SizeFit) spike >= 50% WoW"

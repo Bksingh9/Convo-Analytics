@@ -1,0 +1,53 @@
+{
+  "title": "FYND वार्ता विश्लेषण",
+  "record": "रिकॉर्ड",
+  "stop": "रोकें",
+  "bookmark": "बुकमार्क",
+  "upload": "अपलोड",
+  "dragDrop": "यहां ऑडियो खींचें और छोड़ें या क्लिक करें",
+  "interactions": "वार्तालाप",
+  "trends": "प्रवृत्तियाँ",
+  "summary": "सारांश",
+  "keywords": "मुख्य शब्द",
+  "sentiment": "भाव",
+  "redFlags": "रेड-फ्लैग",
+  "objectionsVsHandling": "आपत्ति बनाम हैंडलिंग",
+  "language": "भाषा",
+  "en": "अंग्रेज़ी",
+  "hi": "हिंदी",
+  "search": "खोजें",
+  "nav": {
+    "dashboard": "डैशबोर्ड",
+    "ingest": "ऑडियो इनपुट",
+    "trends": "विश्लेषण प्रवृत्तियाँ",
+    "interactions": "वार्तालाप",
+    "qa": "गुणवत्ता आश्वासन",
+    "settings": "सेटिंग्स",
+    "training": "मॉडल प्रशिक्षण"
+  },
+  "theme": {
+    "light": "हल्का",
+    "dark": "गहरा",
+    "system": "सिस्टम"
+  },
+  "processing": "ऑडियो प्रोसेसिंग...",
+  "translating": "अनुवाद...",
+  "instructions": "निर्देश",
+  "voiceAnalysis": "आवाज विश्लेषण",
+  "speakerDetection": "स्पीकर पहचान",
+  "languageDetection": "भाषा पहचान",
+  "insights": "AI अंतर्दृष्टि",
+  "training": {
+    "title": "मॉडल प्रशिक्षण केंद्र",
+    "subtitle": "आवाज विश्लेषण और भाषा पहचान की सटीकता में सुधार करें",
+    "feedback": "प्रशिक्षण फीडबैक",
+    "performance": "मॉडल प्रदर्शन",
+    "languages": "भाषा प्रशिक्षण",
+    "submitFeedback": "फीडबैक सबमिट करें",
+    "trainingProgress": "प्रशिक्षण प्रगति",
+    "modelAccuracy": "मॉडल सटीकता",
+    "trainingSamples": "प्रशिक्षण नमूने",
+    "voiceSamples": "आवाज नमूने",
+    "recentImprovements": "हाल की सुधार"
+  }
+}
