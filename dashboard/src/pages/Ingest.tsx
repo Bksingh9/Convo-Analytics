@@ -1,319 +1,466 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Mic, Upload, FileAudio, Play, Pause, Square, Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
-import { createInteraction, uploadAudio } from '../lib/api';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { 
+  Upload, 
+  FileAudio, 
+  Mic, 
+  Play, 
+  Pause, 
+  Square, 
+  Loader2, 
+  CheckCircle, 
+  AlertTriangle,
+  Brain,
+  Zap,
+  BarChart3,
+  Settings
+} from 'lucide-react';
+import AudioRecorder from '@/components/AudioRecorder';
+import RealtimeAudioProcessor from '@/components/RealtimeAudioProcessor';
+import AIInsightsDashboard from '@/components/AIInsightsDashboard';
 
 const Ingest = () => {
   const { t } = useTranslation();
-  const [isRecording, setIsRecording] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [lastResult, setLastResult] = useState(null);
   const [error, setError] = useState(null);
-  
-  const mediaRecorderRef = useRef(null);
-  const chunksRef = useRef([]);
-  const startTimeRef = useRef(null);
-  const intervalRef = useRef(null);
+  const [transcriptions, setTranscriptions] = useState<string[]>([]);
+  const [detectedLanguages, setDetectedLanguages] = useState<string[]>([]);
+  const [currentInteractionId, setCurrentInteractionId] = useState<string | null>(null);
+  const [processingMode, setProcessingMode] = useState<'basic' | 'enhanced' | 'realtime'>('enhanced');
+  const [aiAnalysisEnabled, setAiAnalysisEnabled] = useState(true);
+
+  // Create new interaction
+  const createInteraction = async () => {
+    try {
+      const response = await fetch('/api/v1/interactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          store_id: 'store1',
+          user_id: 'user1',
+          lang_hint: 'auto',
+          enable_realtime: processingMode === 'realtime',
+          enable_ai_analysis: aiAnalysisEnabled
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentInteractionId(data.id);
+        return data.id;
+      }
+    } catch (err) {
+      console.error('Failed to create interaction:', err);
+    }
+    return null;
+  };
+
+  const handleTranscription = (text: string) => {
+    setTranscriptions(prev => [...prev, text]);
+    setLastResult({ transcript: text, timestamp: new Date().toISOString() });
+  };
+
+  const handleLanguageDetected = (language: string) => {
+    setDetectedLanguages(prev => [...prev, language]);
+  };
+
+  const handleRealtimeTranscriptUpdate = (transcript: string) => {
+    setTranscriptions(prev => [...prev, transcript]);
+    setLastResult({ transcript, timestamp: new Date().toISOString() });
+  };
+
+  const handleSessionEnd = (finalResults: any) => {
+    console.log('Session ended with results:', finalResults);
+    setLastResult({
+      transcript: finalResults.final_transcript,
+      timestamp: new Date().toISOString(),
+      finalResults
+    });
+  };
+
+  const clearHistory = () => {
+    setTranscriptions([]);
+    setDetectedLanguages([]);
+    setLastResult(null);
+    setError(null);
+    setCurrentInteractionId(null);
+  };
+
+  const uploadAudioFile = async (file: File) => {
+    if (!currentInteractionId) {
+      const interactionId = await createInteraction();
+      if (!interactionId) {
+        setError('Failed to create interaction');
+        return;
+      }
+    }
+
+    setIsUploading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('interaction_id', currentInteractionId!);
+      formData.append('use_ai_analysis', aiAnalysisEnabled.toString());
+      formData.append('processing_mode', processingMode);
+
+      const response = await fetch('/api/v1/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setLastResult(result);
+        if (result.transcript) {
+          setTranscriptions(prev => [...prev, result.transcript]);
+        }
+        if (result.detected_language) {
+          setDetectedLanguages(prev => [...prev, result.detected_language]);
+        }
+      } else {
+        const errorData = await response.json();
+        setError(errorData.detail || 'Upload failed');
+      }
+    } catch (err) {
+      setError('Upload failed: ' + (err as Error).message);
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   useEffect(() => {
-    if (isRecording) {
-      intervalRef.current = setInterval(() => {
-        setRecordingTime(Date.now() - startTimeRef.current);
-      }, 100);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [isRecording]);
-
-  const startRecording = async () => {
-    try {
-      setError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      
-      chunksRef.current = [];
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          chunksRef.current.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
-        await processRecording(blob);
-        stream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorderRef.current = mediaRecorder;
-      mediaRecorder.start();
-      setIsRecording(true);
-      startTimeRef.current = Date.now();
-    } catch (err) {
-      console.error('Error starting recording:', err);
-      setError('Failed to start recording. Please check microphone permissions.');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  };
-
-  const processRecording = async (blob) => {
-    try {
-      setIsUploading(true);
-      setUploadProgress(0);
-      
-      // Create interaction
-      const interaction = await createInteraction('store1', 'webuser', 'auto');
-      
-      // Simulate upload progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 200);
-
-      // Upload audio
-      const result = await uploadAudio(interaction.id, blob, []);
-      
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-      setLastResult(result);
-      setError(null);
-    } catch (err) {
-      console.error('Error processing recording:', err);
-      setError('Failed to process recording. Please try again.');
-    } finally {
-      setIsUploading(false);
-      setTimeout(() => setUploadProgress(0), 2000);
-    }
-  };
-
-  const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    try {
-      setIsUploading(true);
-      setUploadProgress(0);
-      setError(null);
-      
-      // Create interaction
-      const interaction = await createInteraction('store1', 'webuser', 'auto');
-      
-      // Simulate upload progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 200);
-
-      // Upload file
-      const result = await uploadAudio(interaction.id, file, []);
-      
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-      setLastResult(result);
-    } catch (err) {
-      console.error('Error uploading file:', err);
-      setError('Failed to upload file. Please try again.');
-    } finally {
-      setIsUploading(false);
-      setTimeout(() => setUploadProgress(0), 2000);
-    }
-  };
-
-  const formatTime = (ms) => {
-    const seconds = Math.floor(ms / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const remainingSeconds = seconds % 60;
-    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
-  };
+    // Create initial interaction
+    createInteraction();
+  }, []);
 
   return (
-    <div className="p-8 space-y-8 bg-gray-50 dark:bg-gray-900 min-h-screen">
-      <div>
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-2">
-          Audio Ingest
-        </h1>
-        <p className="text-lg text-gray-600 dark:text-gray-400">
-          Upload and process audio files for real-time analysis
-        </p>
+    <div className="p-6 space-y-6 bg-gray-50 dark:bg-gray-900 min-h-screen">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            <Brain className="h-8 w-8" />
+            AI-Powered Audio Ingest
+          </h1>
+          <p className="text-lg text-gray-600 dark:text-gray-400">
+            Advanced audio processing with real-time transcription, AI analysis, and quality control
+          </p>
+        </div>
+        <div className="flex items-center space-x-4">
+          <Badge variant="outline" className="text-sm">
+            {transcriptions.length} transcriptions
+          </Badge>
+          <Badge variant={processingMode === 'enhanced' ? 'default' : 'secondary'} className="text-sm">
+            {processingMode === 'enhanced' ? 'AI Enhanced' : processingMode === 'realtime' ? 'Real-time' : 'Basic'}
+          </Badge>
+          <Button onClick={clearHistory} variant="outline" size="sm">
+            Clear History
+          </Button>
+        </div>
       </div>
+
+      {/* Processing Mode Selection */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="h-5 w-5" />
+            Processing Configuration
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Processing Mode</label>
+              <div className="flex gap-2">
+                <Button
+                  variant={processingMode === 'basic' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setProcessingMode('basic')}
+                >
+                  Basic
+                </Button>
+                <Button
+                  variant={processingMode === 'enhanced' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setProcessingMode('enhanced')}
+                >
+                  <Brain className="h-4 w-4 mr-1" />
+                  Enhanced
+                </Button>
+                <Button
+                  variant={processingMode === 'realtime' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setProcessingMode('realtime')}
+                >
+                  <Zap className="h-4 w-4 mr-1" />
+                  Real-time
+                </Button>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">AI Analysis</label>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="ai-analysis"
+                  checked={aiAnalysisEnabled}
+                  onChange={(e) => setAiAnalysisEnabled(e.target.checked)}
+                  className="rounded"
+                />
+                <label htmlFor="ai-analysis" className="text-sm">
+                  Enable AI Analysis
+                </label>
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Current Interaction</label>
+              <div className="text-sm text-muted-foreground">
+                {currentInteractionId ? (
+                  <span className="font-mono">{currentInteractionId.slice(0, 8)}...</span>
+                ) : (
+                  <span>No active interaction</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-4">
-          <div className="flex items-center space-x-2">
-            <AlertTriangle className="h-5 w-5 text-red-600" />
-            <p className="text-red-800 dark:text-red-300">{error}</p>
-          </div>
-        </div>
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
-      {lastResult && (
-        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4">
-          <div className="flex items-center space-x-2">
-            <CheckCircle className="h-5 w-5 text-emerald-600" />
-            <p className="text-emerald-800 dark:text-emerald-300">Audio processed successfully!</p>
-          </div>
-          <div className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">
-            <p>Interaction ID: {lastResult.id}</p>
-            <p>Keywords: {lastResult.keywords?.join(', ') || 'None detected'}</p>
-            <p>Sentiment: {lastResult.metrics?.sentiment?.toFixed(2) || 'N/A'}</p>
-          </div>
-        </div>
-      )}
+      <Tabs defaultValue="upload" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="upload">File Upload</TabsTrigger>
+          <TabsTrigger value="recorder">Audio Recorder</TabsTrigger>
+          {processingMode === 'realtime' && (
+            <TabsTrigger value="realtime">Real-time Processing</TabsTrigger>
+          )}
+          <TabsTrigger value="insights">AI Insights</TabsTrigger>
+        </TabsList>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Recording Section */}
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-lg p-6">
-          <div className="flex items-center space-x-3 mb-4">
-            <Mic className="h-6 w-6 text-blue-600" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Record Audio</h3>
-          </div>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">Record live audio for real-time analysis</p>
-          
-          <div className="text-center">
-            {isRecording && (
-              <div className="mb-4">
-                <div className="text-3xl font-bold text-red-600 mb-2">
-                  {formatTime(recordingTime)}
-                </div>
-                <div className="flex items-center justify-center space-x-2">
-                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                  <span className="text-sm text-red-600">Recording...</span>
-                </div>
+        <TabsContent value="upload" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Upload className="h-5 w-5" />
+                Upload Audio File
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-8 text-center">
+                <FileAudio className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                <p className="text-lg font-medium mb-2">Drop your audio file here</p>
+                <p className="text-gray-500 mb-4">Supports WAV, MP3, M4A, WebM formats</p>
+                <input
+                  type="file"
+                  accept="audio/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      uploadAudioFile(file);
+                    }
+                  }}
+                  className="hidden"
+                  id="audio-upload"
+                />
+                <Button asChild>
+                  <label htmlFor="audio-upload" className="cursor-pointer">
+                    {isUploading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Uploading...
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Choose File
+                      </>
+                    )}
+                  </label>
+                </Button>
               </div>
-            )}
-            
-            <button
-              onClick={isRecording ? stopRecording : startRecording}
-              disabled={isUploading}
-              className={`w-full py-4 px-6 rounded-xl font-semibold text-white transition-all duration-200 flex items-center justify-center space-x-2 ${
-                isRecording 
-                  ? 'bg-red-600 hover:bg-red-700' 
-                  : 'bg-blue-600 hover:bg-blue-700'
-              } disabled:opacity-50 disabled:cursor-not-allowed`}
-            >
-              {isRecording ? (
-                <>
-                  <Square className="h-5 w-5" />
-                  <span>Stop Recording</span>
-                </>
-              ) : (
-                <>
-                  <Mic className="h-5 w-5" />
-                  <span>Start Recording</span>
-                </>
+              
+              {uploadProgress > 0 && (
+                <div className="mt-4">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Upload Progress</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
               )}
-            </button>
-          </div>
-        </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-        {/* Upload Section */}
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-lg p-6">
-          <div className="flex items-center space-x-3 mb-4">
-            <Upload className="h-6 w-6 text-green-600" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Upload File</h3>
-          </div>
-          <p className="text-gray-600 dark:text-gray-400 mb-6">Upload existing audio files for analysis</p>
-          
-          <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-8 text-center hover:border-blue-400 transition-colors">
-            <FileAudio className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-            <p className="text-gray-600 dark:text-gray-400 mb-2">Drag & drop audio files here</p>
-            <p className="text-sm text-gray-500 mb-4">or click to browse</p>
-            
-            <input
-              type="file"
-              accept="audio/*"
-              onChange={handleFileUpload}
-              disabled={isUploading}
-              className="hidden"
-              id="audio-upload"
+        <TabsContent value="recorder" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Mic className="h-5 w-5" />
+                Audio Recorder
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <AudioRecorder
+                onTranscription={handleTranscription}
+                onLanguageDetected={handleLanguageDetected}
+                processingMode={processingMode}
+                aiAnalysisEnabled={aiAnalysisEnabled}
+                interactionId={currentInteractionId}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {processingMode === 'realtime' && (
+          <TabsContent value="realtime" className="space-y-4">
+            <RealtimeAudioProcessor
+              interactionId={currentInteractionId || ''}
+              userId="user1"
+              storeId="store1"
+              languageHint="auto"
+              onTranscriptUpdate={handleRealtimeTranscriptUpdate}
+              onSessionEnd={handleSessionEnd}
             />
-            <label
-              htmlFor="audio-upload"
-              className={`inline-block px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors cursor-pointer ${
-                isUploading ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-            >
-              Choose File
-            </label>
-          </div>
-        </div>
-      </div>
+          </TabsContent>
+        )}
 
-      {/* Upload Progress */}
-      {isUploading && (
-        <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-lg p-6">
-          <div className="flex items-center space-x-3 mb-4">
-            <Loader2 className="h-6 w-6 text-blue-600 animate-spin" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Processing Audio</h3>
-          </div>
-          
-          <div className="space-y-4">
-            <div className="flex justify-between text-sm">
-              <span>Upload Progress</span>
-              <span>{uploadProgress}%</span>
+        <TabsContent value="insights" className="space-y-4">
+          <AIInsightsDashboard
+            interactionId={currentInteractionId || undefined}
+            autoRefresh={true}
+            refreshInterval={10000}
+          />
+        </TabsContent>
+      </Tabs>
+
+      {/* Results Display */}
+      {lastResult && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              Latest Results
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {lastResult.transcript && (
+                <div>
+                  <h4 className="font-medium mb-2">Transcript</h4>
+                  <p className="text-sm bg-gray-100 dark:bg-gray-800 p-3 rounded">
+                    {lastResult.transcript}
+                  </p>
+                </div>
+              )}
+              
+              {lastResult.summary && (
+                <div>
+                  <h4 className="font-medium mb-2">Summary</h4>
+                  <p className="text-sm bg-blue-50 dark:bg-blue-900/20 p-3 rounded">
+                    {lastResult.summary}
+                  </p>
+                </div>
+              )}
+              
+              {lastResult.keywords && lastResult.keywords.length > 0 && (
+                <div>
+                  <h4 className="font-medium mb-2">Keywords</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {lastResult.keywords.map((keyword, index) => (
+                      <Badge key={index} variant="secondary">
+                        {keyword}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {lastResult.metrics && (
+                <div>
+                  <h4 className="font-medium mb-2">Metrics</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    {Object.entries(lastResult.metrics).map(([key, value]) => (
+                      <div key={key} className="bg-gray-50 dark:bg-gray-800 p-2 rounded">
+                        <div className="font-medium capitalize">
+                          {key.replace(/_/g, ' ')}
+                        </div>
+                        <div className="text-muted-foreground">
+                          {typeof value === 'number' ? value.toFixed(2) : String(value)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {lastResult.insights && lastResult.insights.length > 0 && (
+                <div>
+                  <h4 className="font-medium mb-2">AI Insights</h4>
+                  <div className="space-y-2">
+                    {lastResult.insights.map((insight, index) => (
+                      <div key={index} className="border-l-4 border-blue-500 pl-3 py-1">
+                        <div className="font-medium text-sm">{insight.message}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {insight.category} • Confidence: {(insight.confidence * 100).toFixed(1)}%
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-              <div 
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${uploadProgress}%` }}
-              ></div>
-            </div>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              {uploadProgress < 50 ? 'Uploading audio file...' : 
-               uploadProgress < 90 ? 'Processing with AI models...' : 
-               'Finalizing analysis...'}
-            </p>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Real-time Status */}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 shadow-lg p-6">
-        <div className="flex items-center space-x-3 mb-4">
-          <Play className="h-6 w-6 text-purple-600" />
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Real-time Processing Status</h3>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div className="w-3 h-3 bg-emerald-500 rounded-full animate-pulse"></div>
-            <span className="text-sm text-gray-900 dark:text-white">Audio Processing</span>
-          </div>
-          <div className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div className="w-3 h-3 bg-blue-500 rounded-full animate-pulse"></div>
-            <span className="text-sm text-gray-900 dark:text-white">ML Models Active</span>
-          </div>
-          <div className="flex items-center space-x-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-            <div className="w-3 h-3 bg-purple-500 rounded-full animate-pulse"></div>
-            <span className="text-sm text-gray-900 dark:text-white">Real-time Analysis</span>
-          </div>
-        </div>
-      </div>
+      {/* Transcription History */}
+      {transcriptions.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Transcription History
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {transcriptions.map((transcript, index) => (
+                <div key={index} className="p-3 bg-gray-50 dark:bg-gray-800 rounded">
+                  <div className="text-sm text-muted-foreground mb-1">
+                    #{index + 1}
+                  </div>
+                  <p className="text-sm">{transcript}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
